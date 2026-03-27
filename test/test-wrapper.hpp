@@ -29,9 +29,9 @@
 // - Dump the trampoline
 // - Dump the new hook
 // Perhaps we make TestWrapper take a Fixups instance for this? That way we can do all three of those.
-#define ERROR(S, ...)                     \
+#define ERROR(...)                     \
   do {                                    \
-    fmt::print(stderr, S, ##__VA_ARGS__); \
+    fmt::print(stderr, __VA_ARGS__); \
     fmt::print(stderr, "\n");             \
     std::exit(1);                         \
   } while (0)
