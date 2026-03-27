@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <optional>
 #include <fmt/format.h>
 #include <fmt/compile.h>
 
@@ -42,7 +43,7 @@ struct HookNameFilter {
   explicit HookNameFilter(std::string namespaze, std::string name) : namespaze(std::move(namespaze)), name(std::move(name)) {}
 
   /// @brief Construct a filter that matches the provided metadata. This is used for constructing filters from userdata.
-  explicit HookNameFilter(HookNameMetadata const& metadata) : namespaze(metadata.namespaze), name(metadata.name) {}
+  HookNameFilter(HookNameMetadata const& metadata) : namespaze(metadata.namespaze), name(metadata.name) {}
 
   /// @brief Checks if the provided metadata matches this filter. 
   // A filter with no fields set matches everything.
