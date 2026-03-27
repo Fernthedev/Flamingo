@@ -103,6 +103,6 @@ class fmt::formatter<flamingo::HookNameFilter> {
   }
   template <typename Context>
   constexpr auto format(flamingo::HookNameFilter const& filter, Context& ctx) const {
-    return fmt::format_to(ctx.out(), "name: {} namespaze {}", filter.name.value_or("*"), filter.namespaze.value_or("*"));
+    return fmt::format_to(ctx.out(), "name: {} namespace {}", filter.name.value_or("*"), filter.namespaze.value_or("*"));
   }
 };
