@@ -93,7 +93,8 @@ typedef struct FlamingoTypeInfo FlamingoTypeInfo;
 
 /// @brief C representation of a hook entry returned by query APIs.
 /// Fields owning strings (`name` and `namespaze`) are allocated by the API
-/// and must be freed with `flamingo_free_strings` if non-null.
+/// and must be freed with `flamingo_free_hooks_array` (pass the `hooks` array
+/// and the number of elements to free).
 typedef struct {
   void* hook_ptr;    ///< Pointer to the hook function
   void* orig_ptr;    ///< Pointer to the original/trampoline function or NULL
@@ -263,10 +264,11 @@ FLAMINGO_C_EXPORT_VOID void flamingo_format_error(FlamingoInstallErrorData* erro
 FLAMINGO_C_EXPORT size_t flamingo_get_hook_count(uint32_t* target);
 
 /// @brief Fills the provided `hooks` array with `FlamingoHookInfo` entries for `target`.
-/// If `capacity` is smaller than the number of hooks, the function returns the required size but does not write
-/// beyond `capacity` elements.
-/// The `name` and `namespaze` fields inside each written `FlamingoHookInfo` are allocated with `malloc` and must
-/// be freed with `flamingo_free_strings` (pass an array of the `name` pointers or `namespaze` pointers respectively).
+/// If `capacity` is smaller than the number of hooks, the function writes up to `capacity` elements and
+/// returns the number of elements written (i.e. the number of `FlamingoHookInfo` structures populated).
+/// The `name` and `namespaze` fields inside each written `FlamingoHookInfo` are allocated with `malloc`.
+/// To free those strings, call `flamingo_free_hooks_array` passing the same `hooks` pointer and the length
+/// equal to the number of entries written (the function's return value).
 FLAMINGO_C_EXPORT size_t flamingo_get_hooks(uint32_t* target, FlamingoHookInfo* hooks, size_t capacity);
 
 /// @brief Frees the `name` and `namespaze` strings inside an array of `FlamingoHookInfo` returned
