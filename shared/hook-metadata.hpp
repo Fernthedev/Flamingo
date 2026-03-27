@@ -26,13 +26,6 @@ struct HookNameMetadata {
   std::string name{};
   std::string namespaze{};
 
-  /// @brief Checks if this name metadata matches another (either by name or namespace)
-  /// @param other The other metadata to check against
-  /// @return True if either the name or namespace matches
-  [[nodiscard]] bool matches(HookNameMetadata const& other) const {
-    return *this == other || (!name.empty() && name == other.name) || (!namespaze.empty() && namespaze == other.namespaze);
-  }
-
   [[nodiscard]]
   bool operator==(HookNameMetadata const& other) const {
     return (name == other.name) && (namespaze == other.namespaze);
@@ -40,7 +33,29 @@ struct HookNameMetadata {
 };
 
 /// Specifies the filter type for hook names in priorities
-using HookNameFilter = HookNameMetadata;
+struct HookNameFilter {
+  std::optional<std::string> namespaze{};
+  std::optional<std::string> name{};
+
+  explicit HookNameFilter() = default;
+  explicit HookNameFilter(std::string namespaze) : namespaze(std::move(namespaze)) {}
+  explicit HookNameFilter(std::string namespaze, std::string name) : namespaze(std::move(namespaze)), name(std::move(name)) {}
+
+  /// @brief Construct a filter that matches the provided metadata. This is used for constructing filters from userdata.
+  explicit HookNameFilter(HookNameMetadata const& metadata) : namespaze(metadata.namespaze), name(metadata.name) {}
+
+  /// @brief Checks if the provided metadata matches this filter. 
+  // A filter with no fields set matches everything.
+  [[nodiscard]] bool matches(HookNameMetadata const& metadata) const {
+    if (name.has_value() && name.value() != metadata.name) {
+      return false;
+    }
+    if (namespaze.has_value() && namespaze.value() != metadata.namespaze) {
+      return false;
+    }
+    return true;
+  }
+};
 
 /// @brief Represents a priority for how to align hook orderings. Note that a change in priority MAY require a full list
 /// recreation. But SHOULD NOT require a hook recompile or a trampoline recompile.
@@ -77,5 +92,16 @@ class fmt::formatter<flamingo::HookNameMetadata> {
   template <typename Context>
   constexpr auto format(flamingo::HookNameMetadata const& metadata, Context& ctx) const {
     return fmt::format_to(ctx.out(), "name: {} namespaze {}", metadata.name, metadata.namespaze);
+  }
+};
+template <>
+class fmt::formatter<flamingo::HookNameFilter> {
+ public:
+  constexpr auto parse(format_parse_context& ctx) {
+    return ctx.begin();
+  }
+  template <typename Context>
+  constexpr auto format(flamingo::HookNameFilter const& filter, Context& ctx) const {
+    return fmt::format_to(ctx.out(), "name: {} namespaze {}", filter.name.value_or("*"), filter.namespaze.value_or("*"));
   }
 };

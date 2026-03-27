@@ -82,6 +82,9 @@ typedef enum {
 /// @brief Opaque pointer around a flamingo::HookNameMetadata
 typedef struct FlamingoNameInfo FlamingoNameInfo;
 
+/// @brief Opaque pointer around a flamingo::HookNameFilter
+typedef struct FlamingoHookFilter FlamingoHookFilter;
+
 /// @brief Opaque pointer around a flamingo::HookPriority
 typedef struct FlamingoHookPriority FlamingoHookPriority;
 
@@ -116,20 +119,39 @@ typedef struct {
 } FlamingoOriginalInstructionsResult;
 
 /// @brief Creates a flamingo::HookNameMetadata from the provided parameters. The return is an opaque pointer.
+/// @param name_str Nullable, C string for the hook's name (may be NULL or empty for no name).
+/// @return An opaque pointer to a FlamingoNameInfo. The returned pointer's lifetime is until it is consumed by a call
+/// to flamingo_install_hook*, flamingo_make_priority, or any API that takes ownership of FlamingoNameInfo*.
 /// The returned pointer's lifetime is until a different flamingo API call is made that CONSUMES the FlamingoNameInfo*.
-/// This is primarily used to give hooks names and to describe priorities for installation.
+/// This is primarily used to give hooks names for installation.
 /// The lifetime of the result is until it is consumed by a call to flamingo_install_hook*, or flamingo_make_priority.
 FLAMINGO_C_EXPORT FlamingoNameInfo* flamingo_make_name(char const* name_str);
 
+/// @brief Creates a flamingo::HookNameMetadata from the provided parameters. The return is an opaque pointer.
+/// @param namespaze_str Nullable, C string for the hook's namespace (may be NULL or empty for no namespace).
+/// @param name_str Nullable, C string for the hook's name (may be NULL or empty for no name).
+/// @return An opaque pointer to a FlamingoNameInfo. The returned pointer's lifetime is until it is consumed by a call
+/// The returned pointer's lifetime is until a different flamingo API call is made that CONSUMES the FlamingoNameInfo*.
+/// This is primarily used to give hooks names for installation.
+/// The lifetime of the result is until it is consumed by a call to flamingo_install_hook*, or flamingo_make_priority.
+FLAMINGO_C_EXPORT FlamingoNameInfo* flamingo_make_name_namespaced(char const* namespaze_str, char const* name_str);
+
+/// @brief Creates a flamingo::HookNameFilter from the provided namespace and name strings.
+/// @param namespaze_str Nullable, C string for the filter's namespace (may be NULL or empty for no namespace filter). Allows matching any namespace if null or empty.
+/// @param name_str Nullable, C string for the filter's name (may be NULL or empty for no name filter). Allows matching any name if null or empty.
+/// @return An opaque pointer to a FlamingoHookFilter. The returned pointer's lifetime is until it is consumed by a call to
+/// flamingo_make_priority or any API that takes ownership of FlamingoHookFilter*. This is primarily used to describe priorities for installation.
+FLAMINGO_C_EXPORT FlamingoHookFilter* flamingo_make_filter(char const* namespaze_str, char const* name_str);
+
 /// @brief Creates a flamingo::HookMetadata from the provided parameters.
-/// The parameters are arrays of FlamingoNameInfo that must be dereferencable up to num_befores and num_afters
+/// The parameters are arrays of FlamingoHookFilter that must be dereferencable up to num_befores and num_afters
 /// respectively. The parameters are CONSUMED, that is, the pointers are no longer valid after this API call. This is
 /// used to give hooks priority information in flamingo_install_hook_full*
 /// @param is_final Whether this hook should be the final hook (closest to the original function). This takes precedence
 /// over all other priorities.
 /// The lifetime of the result is until it is consumed by a call to flamingo_install_hook*.
-FLAMINGO_C_EXPORT FlamingoHookPriority* flamingo_make_priority(FlamingoNameInfo** before_names, size_t num_befores,
-                                                               FlamingoNameInfo** after_names, size_t num_afters,
+FLAMINGO_C_EXPORT FlamingoHookPriority* flamingo_make_priority(FlamingoHookFilter** before_names, size_t num_befores,
+                                                               FlamingoHookFilter** after_names, size_t num_afters,
                                                                bool is_final);
 
 /// @brief Creates a flamingo::InstallationMetadata from the provided parameters.

@@ -100,24 +100,37 @@ FlamingoUninstallResult convert_uninstall_result(flamingo::Result<bool, bool> co
 FLAMINGO_C_EXPORT FlamingoNameInfo* flamingo_make_name(char const* name_str) {
   return reinterpret_cast<FlamingoNameInfo*>(new flamingo::HookNameMetadata{ .name = name_str });
 }
-FLAMINGO_C_EXPORT FlamingoNameInfo* flamingo_make_name_namespaced(char const* name_str, char const* namespaze_str) {
+FLAMINGO_C_EXPORT FlamingoNameInfo* flamingo_make_name_namespaced(char const* namespaze_str, char const* name_str) {
   return reinterpret_cast<FlamingoNameInfo*>(new flamingo::HookNameMetadata{ .name = name_str, .namespaze = namespaze_str });
 }
 
-FLAMINGO_C_EXPORT FlamingoHookPriority* flamingo_make_priority(FlamingoNameInfo** before_names, size_t num_befores,
-                                                               FlamingoNameInfo** after_names, size_t num_afters, bool is_final) {
+
+FLAMINGO_C_EXPORT FlamingoHookFilter* flamingo_make_filter(char const* namespaze_str, char const* name_str){
+
+  auto* result = new flamingo::HookNameFilter();
+  if (namespaze_str != nullptr) {
+    result->namespaze = namespaze_str;
+  }
+  if (name_str != nullptr) {
+    result->name = name_str;
+  }
+  return reinterpret_cast<FlamingoHookFilter*>(result);
+}
+
+FLAMINGO_C_EXPORT FlamingoHookPriority* flamingo_make_priority(FlamingoHookFilter** before_names, size_t num_befores,
+                                                               FlamingoHookFilter** after_names, size_t num_afters, bool is_final) {
   // Iterate the befores and afters, consume their pointers to make new instances for the before set
   auto result = new flamingo::HookPriority();
   result->befores.resize(num_befores);
   for (size_t i = 0; i < num_befores; i++) {
-    auto value = reinterpret_cast<flamingo::HookNameMetadata*>(before_names[i]);
-    new (&result->befores[i]) flamingo::HookNameMetadata(*value);
+    auto value = reinterpret_cast<flamingo::HookNameFilter*>(before_names[i]);
+    new (&result->befores[i]) flamingo::HookNameFilter(*value);
     delete value;
   }
   result->afters.resize(num_afters);
   for (size_t i = 0; i < num_afters; i++) {
-    auto value = reinterpret_cast<flamingo::HookNameMetadata*>(after_names[i]);
-    new (&result->afters[i]) flamingo::HookNameMetadata(*value);
+    auto value = reinterpret_cast<flamingo::HookNameFilter*>(after_names[i]);
+    new (&result->afters[i]) flamingo::HookNameFilter(*value);
     delete value;
   }
   result->is_final = is_final;

@@ -49,7 +49,7 @@ static void test_name_matching() {
   HookNameMetadata nameB;
   nameB.name = "B";
   HookPriority priorityB;
-  priorityB.afters.push_back(nameA);
+  priorityB.afters.push_back(HookNameFilter(nameA));
 
   flamingo::HookInfo hB((void*)hook_function_B, hook_target.data(), &origB, std::move(nameB), std::move(priorityB));
   auto resB = flamingo::Install(std::move(hB));
@@ -116,7 +116,7 @@ static void test_namespaze_matching() {
   HookNameMetadata prior_name;
   prior_name.name = "prior";
   HookPriority prior_prio;
-  HookNameMetadata match_ns;
+  HookNameFilter match_ns;
   match_ns.namespaze = "common";
   prior_prio.befores.push_back(match_ns);
   flamingo::HookInfo hprior((void*)prior, hook_target.data(), &orig_prior, std::move(prior_name),
@@ -158,9 +158,9 @@ static void test_priority_cycle() {
   HookNameMetadata nY;
   nY.name = "Y";
   HookPriority pX;
-  pX.afters.push_back(nY);
+  pX.afters.push_back(HookNameFilter(nY));
   HookPriority pY;
-  pY.afters.push_back(nX);
+  pY.afters.push_back(HookNameFilter(nX));
 
   flamingo::HookInfo hX((void*)hx, hook_target.data(), &origX, std::move(nX), std::move(pX));
   auto rX = flamingo::Install(std::move(hX));

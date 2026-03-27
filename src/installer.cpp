@@ -85,11 +85,13 @@ std::list<HookInfo> topological_sort_hooks_by_priority(std::list<HookInfo>& hook
     matches.reserve(1);
     for (auto const& hook : hooks) {
       auto const& name = hook.metadata.name_info;
-      // exclude self
+      // exclude self from matches to avoid self-cycle issues. 
+      // If a hook specifies that it should be before/after itself, 
+      // it's likely a mistake, but we won't consider it a cycle since it's not really a dependency.
       if (name == self) {
         continue;
       }
-      if (name.matches(filter)) {
+      if (filter.matches(name)) {
         matches.push_back(name);
       }
     }
