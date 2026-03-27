@@ -541,9 +541,7 @@ void ShimTarget::WriteJump(void* address) {
   ProtectionWriter<uint32_t> writer(*this);
   WriteCallback(writer, reinterpret_cast<uint32_t*>(address));
 
-  // flush instruction cache
-  __builtin___clear_cache(reinterpret_cast<char*>(addr.data()),
-                             reinterpret_cast<char*>(addr.data() + addr.size()));
+
 }
 
 void ShimTarget::WriteCallback(ProtectionWriter<uint32_t>& writer, uint32_t const* target) {
