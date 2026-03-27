@@ -116,8 +116,7 @@ static void test_namespaze_matching() {
   HookNameMetadata prior_name;
   prior_name.name = "prior";
   HookPriority prior_prio;
-  HookNameFilter match_ns;
-  match_ns.namespaze = "common";
+  HookNameFilter match_ns{"common"};
   prior_prio.befores.push_back(match_ns);
   flamingo::HookInfo hprior((void*)prior, hook_target.data(), &orig_prior, std::move(prior_name),
                             std::move(prior_prio));
@@ -217,8 +216,7 @@ static void test_complex_namespace() {
   if (!flamingo::Install(std::move(hA2)).has_value()) ERROR("Failed to install a2");
 
   // b1 requests to be before the entire namespaze "alpha"
-  HookNameMetadata match_ns;
-  match_ns.namespaze = "alpha";
+  HookNameFilter match_ns{"alpha"};
   HookPriority pB;
   pB.befores.push_back(match_ns);
   flamingo::HookInfo hB1((void*)b1, hook_target.data(), &origB1, std::move(mb1), std::move(pB));
@@ -472,8 +470,7 @@ static void test_befores_namespace_multiple() {
   HookNameMetadata prior_name;
   prior_name.name = "prior";
   HookPriority prior_p;
-  HookNameMetadata match_ns;
-  match_ns.namespaze = "grp";
+  HookNameFilter match_ns{"grp"};
   prior_p.befores.push_back(match_ns);
   if (!flamingo::Install(
            flamingo::HookInfo((void*)prior, hook_target.data(), &origPrior, std::move(prior_name), std::move(prior_p)))
@@ -522,9 +519,9 @@ static void test_afters_namespace_multiple() {
   HookNameMetadata late_name;
   late_name.name = "late";
   HookPriority late_p;
-  HookNameMetadata match_ns2;
+  HookNameFilter match_ns2;
   match_ns2.namespaze = "grp";
-  late_p.afters.push_back(match_ns2);
+  late_p.afters.emplace_back(match_ns2);
   if (!flamingo::Install(
            flamingo::HookInfo((void*)late, hook_target.data(), &origLate, std::move(late_name), std::move(late_p)))
            .has_value())
@@ -580,8 +577,7 @@ static void test_preserve_no_priority_relative_order() {
   HookNameMetadata md;
   md.name = "d";
   HookPriority pd;
-  HookNameMetadata match_ns;
-  match_ns.namespaze = "grp";
+  HookNameFilter match_ns{"grp"};
   pd.befores.push_back(match_ns);
   if (!flamingo::Install(flamingo::HookInfo((void*)d, hook_target.data(), &origD, std::move(md), std::move(pd)))
            .has_value())
