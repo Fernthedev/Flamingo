@@ -40,13 +40,41 @@ struct HookNameMetadataHash {
 /// @brief Topologically sorts the provided hooks by their priority constraints.
 /// @param hooks The list of hooks to sort in place.
 /// @return The sorted list of hooks that have cycles.
-std::list<HookInfo> topological_sort_hooks_by_priority(std::list<HookInfo>& hooks) {
+Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_hooks_by_priority(
+    std::list<HookInfo>& hooks) {
+  using ResultT = Result<std::list<HookInfo>, installation::TargetBadPriorities>;
   // Ensure any "final" priority hooks are placed at the end while preserving relative order.
   std::vector<std::list<HookInfo>::iterator> finals;
-  finals.reserve(std::distance(hooks.begin(), hooks.end()));
+  finals.reserve(hooks.size());
+
+  // build name to iterator map
+  std::unordered_map<HookNameMetadata, std::list<HookInfo>::iterator, HookNameMetadataHash> name_to_iterator;
+
   for (auto it = hooks.begin(); it != hooks.end(); ++it) {
     if (it->metadata.priority.is_final) {
       finals.push_back(it);
+    }
+    name_to_iterator[it->metadata.name_info] = it;
+
+    // check if any reference self in after/before
+    for (auto const& after : it->metadata.priority.afters) {
+      if (after.matches(it->metadata.name_info)) {
+        FLAMINGO_CRITICAL("Hook {} references itself in after dependencies. This is likely a mistake.",
+                          it->metadata.name_info.name);
+
+        return ResultT::Err(installation::TargetBadPriorities{
+          it->metadata, fmt::format("Hook {} references itself in after dependencies. This is likely a mistake.",
+                                    it->metadata.name_info.name) });
+      }
+    }
+    for (auto const& before : it->metadata.priority.befores) {
+      if (before.matches(it->metadata.name_info)) {
+        FLAMINGO_CRITICAL("Hook {} references itself in before dependencies. This is likely a mistake.",
+                          it->metadata.name_info.name);
+        return ResultT::Err(installation::TargetBadPriorities{
+          it->metadata, fmt::format("Hook {} references itself in before dependencies. This is likely a mistake.",
+                                    it->metadata.name_info.name) });
+      }
     }
   }
   for (auto& it : finals) {
@@ -66,31 +94,19 @@ std::list<HookInfo> topological_sort_hooks_by_priority(std::list<HookInfo>& hook
   // each hook has a requirement to be after certain other hooks in this graph
   // we also convert before requirements to after requirements for easier processing
 
-  // build name to iterator map
-  std::unordered_map<HookNameMetadata, std::list<HookInfo>::iterator, HookNameMetadataHash> name_to_iterator;
-  for (auto it = hooks.begin(); it != hooks.end(); ++it) {
-    name_to_iterator[it->metadata.name_info] = it;
-  }
-
   // A before B == B after A
   // HookInfo after strings
   // this graph represents all the hooks and their before dependencies
-  // key must be before values
+  // if A must be before B, we have an edge A -> B, meaning A must come before B
   std::unordered_map<HookNameMetadata, std::vector<HookNameMetadata>, HookNameMetadataHash> graph;
   graph.reserve(hooks.size());
 
   // finds all hooks that match the given filter
-  auto findMatches = [&](HookNameFilter const& filter, HookNameMetadata self) {
+  auto findMatches = [&](HookNameFilter const& filter) {
     std::vector<HookNameMetadata> matches;
     matches.reserve(1);
     for (auto const& hook : hooks) {
       auto const& name = hook.metadata.name_info;
-      // exclude self from matches to avoid self-cycle issues. 
-      // If a hook specifies that it should be before/after itself, 
-      // it's likely a mistake, but we won't consider it a cycle since it's not really a dependency.
-      if (name == self) {
-        continue;
-      }
       if (filter.matches(name)) {
         matches.push_back(name);
       }
@@ -104,7 +120,7 @@ std::list<HookInfo> topological_sort_hooks_by_priority(std::list<HookInfo>& hook
     // If this hook specifies that it must come after some other hooks (A),
     // then we must add edges A -> this_hook in the graph (so that A precedes this).
     for (auto const& afterFilter : hook.metadata.priority.afters) {
-      auto matches = findMatches(afterFilter, hook.metadata.name_info);
+      auto matches = findMatches(afterFilter);
       for (auto const& matched : matches) {
         graph[matched].push_back(hook.metadata.name_info);
       }
@@ -113,7 +129,7 @@ std::list<HookInfo> topological_sort_hooks_by_priority(std::list<HookInfo>& hook
     // now build from befores
     // If this hook requests to be before some matched hooks, add edges current -> matched
     for (auto const& beforeFilter : hook.metadata.priority.befores) {
-      auto matches = findMatches(beforeFilter, hook.metadata.name_info);
+      auto matches = findMatches(beforeFilter);
       for (auto const& matched_before : matches) {
         graph[hook.metadata.name_info].push_back(matched_before);
       }
@@ -183,13 +199,21 @@ std::list<HookInfo> topological_sort_hooks_by_priority(std::list<HookInfo>& hook
   // now, any remaining hooks in `hooks` are part of cycles
   // append them in their original order and log a warning. Splicing invalidates
   // iterators, so consume from the front until empty to preserve original order.
-  for (auto const& hook : hooks) {
-    FLAMINGO_CRITICAL(
-        "Detected cycle in hook priorities involving hook name: {}. Hooks involved in the cycle will remain in their "
-        "original order.",
-        hook.metadata.name_info);
-    FLAMINGO_CRITICAL("After priorities for this hook were: {}", fmt::join(hook.metadata.priority.afters, ", "));
-    FLAMINGO_CRITICAL("Before priorities for this hook were: {}", fmt::join(hook.metadata.priority.befores, ", "));
+
+  if (!hooks.empty()) {
+    for (auto const& hook : hooks) {
+      FLAMINGO_CRITICAL(
+          "Detected cycle in hook priorities involving hook name: {}. Hooks involved in the cycle will remain in their "
+          "original order.",
+          hook.metadata.name_info);
+      FLAMINGO_CRITICAL("After priorities for this hook were: {}", fmt::join(hook.metadata.priority.afters, ", "));
+      FLAMINGO_CRITICAL("Before priorities for this hook were: {}", fmt::join(hook.metadata.priority.befores, ", "));
+    }
+
+    // TODO: Restore hooks list to original state?
+    return ResultT::Err(installation::TargetBadPriorities{
+      hooks.front().metadata, fmt::format("Detected cycle in hook priorities involving hooks. Hooks "
+                                                 "involved in the cycle will remain in their original order.") });
   }
 
   // replace original list with the sorted result using swap to avoid reallocation
@@ -205,7 +229,7 @@ std::list<HookInfo> topological_sort_hooks_by_priority(std::list<HookInfo>& hook
   }
 
   // remaining hooks are cycles
-  return sorted_hooks;
+  return ResultT::Ok(sorted_hooks);
 }
 
 /// @brief Recompiles the hooks for the given target, updating their orig pointers as needed.
@@ -233,11 +257,10 @@ void recompile_hooks(std::list<HookInfo>& hooks, TargetDescriptor const& target_
                         ? target_entry->second.fixups.fixup_inst_destination.addr.data()
                         : reinterpret_cast<void*>(&no_fixups));
     return;
-  } 
-  
+  }
+
   // When multiple hooks, orig is next hook
   it->assign_orig(std::next(it)->hook_ptr);
- 
 
   // Multiple hooks: head, middles, tail
 
@@ -326,7 +349,11 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
     // Insert the new hook first so we can let topo sort place it correctly
     auto newIt = hooks.insert(hooks.begin(), std::move(hook_to_install));
     // if our hook has priority constraints, we need to topologically sort and find a suitable location
-    auto cycles = topological_sort_hooks_by_priority(hooks);
+    auto cyclesResult = topological_sort_hooks_by_priority(hooks);
+    if (!cyclesResult.has_value()) {
+      return ResultT::Err(cyclesResult.error());
+    }
+    auto cycles = cyclesResult.value();
 
     if (!cycles.empty()) {
       // We have cycles involving our new hook
@@ -341,7 +368,7 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
 
       return ResultT::Err(installation::TargetBadPriorities{
         metadata, fmt::format("Cannot install hook due to cycles in priorities involving hook name: {}",
-                                              fmt::join(cycle_strings, ",")) });
+                              fmt::join(cycle_strings, ",")) });
     }
 
     // now recompile all hooks to ensure orig pointers are correct
