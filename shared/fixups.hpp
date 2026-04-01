@@ -35,12 +35,12 @@ struct ProtectionWriter {
   }
 
   ~ProtectionWriter() {
-    target.protection = original_permissions;
-    target.Protect();
-
     // flush instruction cache on finish
     auto addr = target.addr;
     __builtin___clear_cache(reinterpret_cast<char*>(addr.data()), reinterpret_cast<char*>(addr.data() + addr.size()));
+
+    target.protection = original_permissions;
+    target.Protect();
   }
   // Write data to this writer. Returns the index that we wrote to.
   uint_fast16_t Write(T inst) {
