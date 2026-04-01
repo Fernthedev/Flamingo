@@ -92,7 +92,7 @@ class fmt::formatter<flamingo::HookNameMetadata> {
   }
   template <typename Context>
   constexpr auto format(flamingo::HookNameMetadata const& metadata, Context& ctx) const {
-    return fmt::format_to(ctx.out(), "name: {} namespaze {}", metadata.name, metadata.namespaze);
+    return fmt::format_to(ctx.out(), "name: {} namespace {}", metadata.name, metadata.namespaze);
   }
 };
 template <>
