@@ -541,7 +541,6 @@ void ShimTarget::WriteJump(void* address) {
   ProtectionWriter<uint32_t> writer(*this);
   WriteCallback(writer, reinterpret_cast<uint32_t*>(address));
 
-
 }
 
 void ShimTarget::WriteCallback(ProtectionWriter<uint32_t>& writer, uint32_t const* target) {
