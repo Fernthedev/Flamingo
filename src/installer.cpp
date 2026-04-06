@@ -47,6 +47,16 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
   std::vector<std::list<HookInfo>::iterator> finals;
   finals.reserve(hooks.size());
 
+  auto LogHooks = [](auto&& s, std::list<HookInfo> const& hooks) {
+    std::vector<std::string_view> hook_names;
+    hook_names.reserve(hooks.size());
+    for (auto const& hook : hooks) {
+      hook_names.push_back(hook.metadata.name_info.name);
+    }
+    // TODO: Can we avoid runtime string here?
+    FLAMINGO_DEBUG(fmt::runtime(s), fmt::join(hook_names, " -> "));
+  };
+
   // build name to iterator map
   std::unordered_map<HookNameMetadata, std::list<HookInfo>::iterator, HookNameMetadataHash> name_to_iterator;
 
@@ -60,7 +70,7 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     for (auto const& after : it->metadata.priority.afters) {
       if (after.matches(it->metadata.name_info)) {
         FLAMINGO_WARN("Hook {} references itself in after dependencies. This is likely a mistake.",
-                          it->metadata.name_info.name);
+                      it->metadata.name_info.name);
 
         return ResultT::Err(installation::TargetBadPriorities{
           it->metadata, fmt::format("Hook {} references itself in after dependencies. This is likely a mistake.",
@@ -70,7 +80,7 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     for (auto const& before : it->metadata.priority.befores) {
       if (before.matches(it->metadata.name_info)) {
         FLAMINGO_WARN("Hook {} references itself in before dependencies. This is likely a mistake.",
-                          it->metadata.name_info.name);
+                      it->metadata.name_info.name);
         return ResultT::Err(installation::TargetBadPriorities{
           it->metadata, fmt::format("Hook {} references itself in before dependencies. This is likely a mistake.",
                                     it->metadata.name_info.name) });
@@ -81,14 +91,7 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     hooks.splice(hooks.end(), hooks, it);
   }
 
-  {
-    std::vector<std::string_view> hook_names;
-    hook_names.reserve(hooks.size());
-    for (auto const& hook : hooks) {
-      hook_names.push_back(hook.metadata.name_info.name);
-    }
-    FLAMINGO_DEBUG("Initial hook order before topological sort: {}", fmt::join(hook_names, " -> "));
-  }
+  LogHooks("Initial hook order before topological sort: {}", hooks);
 
   // now build topological graph
   // each hook has a requirement to be after certain other hooks in this graph
@@ -187,14 +190,7 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     }
   }
 
-  {
-    std::vector<std::string_view> hook_names;
-    hook_names.reserve(sorted_hooks.size());
-    for (auto const& hook : sorted_hooks) {
-      hook_names.push_back(hook.metadata.name_info.name);
-    }
-    FLAMINGO_DEBUG("Flattened hook order after topological sort attempt: {}", fmt::join(hook_names, " -> "));
-  }
+  LogHooks("Flattened hook order after topological sort (before cycle processing): {}", sorted_hooks);
 
   // now, any remaining hooks in `hooks` are part of cycles
   // append them in their original order and log a warning. Splicing invalidates
@@ -213,20 +209,13 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     // TODO: Restore hooks list to original state?
     return ResultT::Err(installation::TargetBadPriorities{
       hooks.front().metadata, fmt::format("Detected cycle in hook priorities involving hooks. Hooks "
-                                                 "involved in the cycle will remain in their original order.") });
+                                          "involved in the cycle will remain in their original order.") });
   }
 
   // replace original list with the sorted result using swap to avoid reallocation
   hooks.swap(sorted_hooks);
 
-  {
-    std::vector<std::string_view> hook_names;
-    hook_names.reserve(hooks.size());
-    for (auto const& hook : hooks) {
-      hook_names.push_back(hook.metadata.name_info.name);
-    }
-    FLAMINGO_DEBUG("Final hook order after topological sort: {}", fmt::join(hook_names, " -> "));
-  }
+  LogHooks("Final hook order after topological sort: {}", hooks);
 
   // remaining hooks are cycles
   return ResultT::Ok(sorted_hooks);
