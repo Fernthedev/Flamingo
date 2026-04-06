@@ -59,7 +59,7 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     // check if any reference self in after/before
     for (auto const& after : it->metadata.priority.afters) {
       if (after.matches(it->metadata.name_info)) {
-        FLAMINGO_CRITICAL("Hook {} references itself in after dependencies. This is likely a mistake.",
+        FLAMINGO_WARN("Hook {} references itself in after dependencies. This is likely a mistake.",
                           it->metadata.name_info.name);
 
         return ResultT::Err(installation::TargetBadPriorities{
@@ -69,7 +69,7 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     }
     for (auto const& before : it->metadata.priority.befores) {
       if (before.matches(it->metadata.name_info)) {
-        FLAMINGO_CRITICAL("Hook {} references itself in before dependencies. This is likely a mistake.",
+        FLAMINGO_WARN("Hook {} references itself in before dependencies. This is likely a mistake.",
                           it->metadata.name_info.name);
         return ResultT::Err(installation::TargetBadPriorities{
           it->metadata, fmt::format("Hook {} references itself in before dependencies. This is likely a mistake.",
