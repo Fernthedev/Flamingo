@@ -240,26 +240,10 @@ void recompile_hooks(std::list<HookInfo>& hooks, TargetDescriptor const& target_
   auto it = hooks.begin();
   target_entry->second.fixups.target.WriteJump(it->hook_ptr);
 
-  // Single hook: target -> hook, hook.orig -> fixups or no_fixups
-  if (std::next(it) == hooks.end()) {
-    it->assign_orig(target_entry->second.metadata.metadata.need_orig
-                        ? target_entry->second.fixups.fixup_inst_destination.addr.data()
-                        : reinterpret_cast<void*>(&no_fixups));
-    return;
-  }
-
-  // When multiple hooks, orig is next hook
-  it->assign_orig(std::next(it)->hook_ptr);
-
-  // Multiple hooks: head, middles, tail
-
-  // Middles
-  for (++it; std::next(it) != hooks.end(); ++it) {
+  while (std::next(it) != hooks.end()) {
     it->assign_orig(std::next(it)->hook_ptr);
+    ++it;
   }
-
-  // Tail
-  // 'it' now refers to the last element
   it->assign_orig(target_entry->second.metadata.metadata.need_orig
                       ? target_entry->second.fixups.fixup_inst_destination.addr.data()
                       : reinterpret_cast<void*>(&no_fixups));
