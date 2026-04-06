@@ -280,8 +280,8 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
     }
     // Select the end to install at
 
-    auto new_it = hooks.emplace(hooks.end(), std::move(hook_to_install));
-    return ResultT::Ok(new_it);
+    hooks.emplace_back(std::move(hook_to_install));
+    return ResultT::Ok(--hooks.end());
   }
 
   // ok now we have a non-final hook
