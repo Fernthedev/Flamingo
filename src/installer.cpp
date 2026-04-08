@@ -65,27 +65,6 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
       finals.push_back(it);
     }
     name_to_iterator[it->metadata.name_info] = it;
-
-    // check if any reference self in after/before
-    for (auto const& after : it->metadata.priority.afters) {
-      if (after.matches(it->metadata.name_info)) {
-        FLAMINGO_WARN("Hook {} references itself in after dependencies. This is likely a mistake.",
-                      it->metadata.name_info.name);
-
-        return ResultT::Err(installation::TargetBadPriorities{
-          it->metadata, fmt::format("Hook {} references itself in after dependencies. This is likely a mistake.",
-                                    it->metadata.name_info.name) });
-      }
-    }
-    for (auto const& before : it->metadata.priority.befores) {
-      if (before.matches(it->metadata.name_info)) {
-        FLAMINGO_WARN("Hook {} references itself in before dependencies. This is likely a mistake.",
-                      it->metadata.name_info.name);
-        return ResultT::Err(installation::TargetBadPriorities{
-          it->metadata, fmt::format("Hook {} references itself in before dependencies. This is likely a mistake.",
-                                    it->metadata.name_info.name) });
-      }
-    }
   }
   for (auto& it : finals) {
     hooks.splice(hooks.end(), hooks, it);
@@ -272,12 +251,7 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
   // Also, if we have a final priority, we need to be the final hook, unless that hook is itself already marked as
   // final.
   if (hook_to_install.metadata.priority.is_final) {
-    if (!hooks.empty() && hooks.back().metadata.priority.is_final) {
-      // We cannot install here, we have a conflict
-      return ResultT::Err(installation::TargetBadPriorities{
-        hook_to_install.metadata, fmt::format("Cannot install a 'final' hook after another 'final' hook with name: {}",
-                                              hooks.back().metadata.name_info) });
-    }
+    // we don't validate here since it's done in the Install function
     // Select the end to install at
 
     hooks.emplace_back(std::move(hook_to_install));
@@ -410,6 +384,46 @@ Result<std::monostate, installation::TargetMismatch> validate_install_metadata(T
   return ResultT::Ok();
 }
 
+Result<std::monostate, installation::TargetBadPriorities> validate_priority_constraints_for_new_hook(
+    std::list<HookInfo> const& existing_hooks, HookMetadata const& incoming) {
+  using ResultT = Result<std::monostate, installation::TargetBadPriorities>;
+  // Validate that the new hook's priorities do not conflict with existing hooks
+  // For each existing hook, we need to ensure that if the new hook wants to be before it, it is actually before it, and
+  // if it wants to be after it, it is actually after it. We also need to ensure that if the new hook has a final priority,
+  // it is the last hook.
+
+  // Check final priority constraints first
+  if (incoming.priority.is_final) {
+    // we can just check the end because final hooks must be at the end
+    if (!existing_hooks.empty() && existing_hooks.back().metadata.priority.is_final) {
+      return ResultT::Err(installation::TargetBadPriorities{
+        incoming, fmt::format("Cannot install a 'final' hook after another 'final' hook with name: {}",
+                              existing_hooks.back().metadata.name_info) });
+    }
+  }
+
+  // Now check before/after constraints
+  for (auto const& existing : existing_hooks) {
+    for (auto const& afterFilter : incoming.priority.afters) {
+      if (afterFilter.matches(existing.metadata.name_info)) {
+        return ResultT::Err(installation::TargetBadPriorities{
+          incoming, fmt::format("Cannot install hook because it requests to be after hook with name: {} but that "
+                                "hook is already installed before it.",
+                                existing.metadata.name_info) });
+      }
+    }
+    for (auto const& beforeFilter : incoming.priority.befores) {
+      if (beforeFilter.matches(existing.metadata.name_info)) {
+        return ResultT::Err(installation::TargetBadPriorities{
+          incoming, fmt::format("Cannot install hook because it requests to be before hook with name: {} but that "
+                                "hook is already installed after it.",
+                                existing.metadata.name_info) });
+      }
+    }
+  }
+
+  return ResultT::Ok();
+
 }  // namespace
 
 namespace flamingo {
@@ -486,6 +500,11 @@ installation::Result Install(HookInfo&& hook) {
   auto installation_checks = validate_install_metadata(hooked_target->second.metadata, hook.metadata);
   if (!installation_checks.has_value()) {
     return installation::Result::ErrAt<installation::TargetMismatch>(installation_checks.error());
+  }
+
+  auto priority_checks = validate_priority_constraints_for_new_hook(hooked_target->second.hooks, hook.metadata);
+  if (!priority_checks.has_value()) {
+    return installation::Result::ErrAt<installation::TargetBadPriorities>(priority_checks.error());
   }
 
   auto location_or_err = find_suitable_priority_location_for(hooked_target->second.hooks, std::move(hook));
