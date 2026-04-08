@@ -30,6 +30,7 @@ static std::span<uint32_t> perform_far_hook_test(uintptr_t hook_location, std::s
                    hook_span);
 }
 
+// Expected chain: A -> B -> fixup
 static void test_name_matching() {
   puts("Test: name matching");
   // Setup
@@ -78,6 +79,7 @@ static void test_name_matching() {
   }
 }
 
+// Expected chain: prior -> two -> one -> fixup
 static void test_namespaze_matching() {
   puts("Test: namespaze matching");
   // Setup three hooks: two in the same namespaze and one that must come before that namespaze
@@ -116,7 +118,7 @@ static void test_namespaze_matching() {
   HookNameMetadata prior_name;
   prior_name.name = "prior";
   HookPriority prior_prio;
-  HookNameFilter match_ns{"common"};
+  HookNameFilter match_ns{ "common" };
   prior_prio.befores.push_back(match_ns);
   flamingo::HookInfo hprior((void*)prior, hook_target.data(), &orig_prior, std::move(prior_name),
                             std::move(prior_prio));
@@ -142,6 +144,7 @@ static void test_namespaze_matching() {
   }
 }
 
+// Expected chain after X install: X -> fixup (Y install should fail)
 static void test_priority_cycle() {
   puts("Test: priority cycle");
   uintptr_t hx = 0xaaaa0001;
@@ -157,9 +160,9 @@ static void test_priority_cycle() {
   HookNameMetadata nY;
   nY.name = "Y";
   HookPriority pX;
-  pX.afters.push_back(HookNameFilter(nY));
+  pX.afters.emplace_back(nY);
   HookPriority pY;
-  pY.afters.push_back(HookNameFilter(nX));
+  pY.afters.emplace_back(nX);
 
   flamingo::HookInfo hX((void*)hx, hook_target.data(), &origX, std::move(nX), std::move(pX));
   auto rX = flamingo::Install(std::move(hX));
@@ -187,6 +190,7 @@ static void test_priority_cycle() {
   }
 }
 
+// Expected chain: b1 -> a2 -> a1 -> fixup
 static void test_complex_namespace() {
   puts("Test: complex namespace ordering");
   uintptr_t a1 = 0x10010001;
@@ -216,7 +220,7 @@ static void test_complex_namespace() {
   if (!flamingo::Install(std::move(hA2)).has_value()) ERROR("Failed to install a2");
 
   // b1 requests to be before the entire namespaze "alpha"
-  HookNameFilter match_ns{"alpha"};
+  HookNameFilter match_ns{ "alpha" };
   HookPriority pB;
   pB.befores.push_back(match_ns);
   flamingo::HookInfo hB1((void*)b1, hook_target.data(), &origB1, std::move(mb1), std::move(pB));
@@ -235,6 +239,7 @@ static void test_complex_namespace() {
     ERROR("Complex-ns: expected a1.orig == fixup got 0x{:x}", (uintptr_t)origA1);
 }
 
+// Expected chain: final1 -> fixup (final2 install should fail)
 static void test_final_conflict() {
   puts("Test: final hook conflict");
   uintptr_t f1 = 0x90010001;
@@ -262,6 +267,7 @@ static void test_final_conflict() {
   if (r2.has_value()) ERROR("Expected second final install to fail but it succeeded");
 }
 
+// Expected chain: h1 -> h2 -> h3 -> h4 -> h5 -> fixup
 static void test_five_hook_order() {
   puts("Test: five-hook priority ordering");
   uintptr_t h1 = 0x50010001;
@@ -291,13 +297,13 @@ static void test_five_hook_order() {
   m5.name = "h5";
 
   HookPriority p2;
-  p2.afters.push_back(m1);  // h2 after h1
+  p2.afters.emplace_back(m1);  // h2 after h1
   HookPriority p3;
-  p3.afters.push_back(m2);  // h3 after h2
+  p3.afters.emplace_back(m2);  // h3 after h2
   HookPriority p4;
-  p4.afters.push_back(m3);  // h4 after h3
+  p4.afters.emplace_back(m3);  // h4 after h3
   HookPriority p5;
-  p5.afters.push_back(m4);  // h5 after h4
+  p5.afters.emplace_back(m4);  // h5 after h4
 
   // Install in scrambled order to ensure priorities drive final order: 3,5,2,4,1
   flamingo::HookInfo hh3((void*)h3, hook_target.data(), &orig3, std::move(m3), std::move(p3));
@@ -331,11 +337,13 @@ static void test_five_hook_order() {
   // find head: hook address not present in any orig_map values
   std::unordered_set<uintptr_t> pointed;
   for (auto const& kv : orig_map) {
-    if (std::find(hooks.begin(), hooks.end(), kv.second) != hooks.end()) pointed.insert(kv.second);
+    if (std::find(hooks.begin(), hooks.end(), kv.second) != hooks.end()) {
+      pointed.insert(kv.second);
+    }
   }
   uintptr_t head = 0;
   for (auto h : hooks) {
-    if (pointed.find(h) == pointed.end()) {
+    if (!pointed.contains(h)) {
       head = h;
       break;
     }
@@ -371,6 +379,7 @@ static void test_five_hook_order() {
 
 // Forward declarations for additional edge-case tests
 
+// Expected chain (no constraints): h3 -> h2 -> h1 -> fixup
 static void test_no_constraints_multiple() {
   puts("Test: no-constraints multiple installs");
   uintptr_t h1 = 0x60010001;
@@ -416,7 +425,7 @@ static void test_no_constraints_multiple() {
   }
   uintptr_t head = 0;
   for (auto h : hooks)
-    if (pointed.find(h) == pointed.end()) {
+    if (!pointed.contains(h)) {
       head = h;
       break;
     }
@@ -441,6 +450,7 @@ static void test_no_constraints_multiple() {
           fmt::format("0x{:x}", order.empty() ? 0 : order[0]));
 }
 
+// Expected chain: prior -> a2 -> a1 -> fixup
 static void test_befores_namespace_multiple() {
   puts("Test: befores matching multiple in namespace");
   uintptr_t a1 = 0x70010001;
@@ -470,7 +480,7 @@ static void test_befores_namespace_multiple() {
   HookNameMetadata prior_name;
   prior_name.name = "prior";
   HookPriority prior_p;
-  HookNameFilter match_ns{"grp"};
+  HookNameFilter match_ns{ "grp" };
   prior_p.befores.push_back(match_ns);
   if (!flamingo::Install(
            flamingo::HookInfo((void*)prior, hook_target.data(), &origPrior, std::move(prior_name), std::move(prior_p)))
@@ -490,6 +500,7 @@ static void test_befores_namespace_multiple() {
     ERROR("Befores-multi: expected a1.orig == fixup got 0x{:x}", (uintptr_t)origA1);
 }
 
+// Expected chain: g2 -> g1 -> late -> fixup
 static void test_afters_namespace_multiple() {
   puts("Test: afters matching multiple in namespace");
   uintptr_t g1 = 0x80010001;
@@ -539,6 +550,7 @@ static void test_afters_namespace_multiple() {
     ERROR("Afters-multi: expected late.orig == fixup got 0x{:x}", (uintptr_t)origLate);
 }
 
+// Expected chain after inserting D: d -> a3 -> a2 -> a1 -> fixup
 static void test_preserve_no_priority_relative_order() {
   puts("Test: preserve relative order of no-priority hooks during topo sort");
   uintptr_t a1 = 0x91010001;
@@ -577,7 +589,7 @@ static void test_preserve_no_priority_relative_order() {
   HookNameMetadata md;
   md.name = "d";
   HookPriority pd;
-  HookNameFilter match_ns{"grp"};
+  HookNameFilter match_ns{ "grp" };
   pd.befores.push_back(match_ns);
   if (!flamingo::Install(flamingo::HookInfo((void*)d, hook_target.data(), &origD, std::move(md), std::move(pd)))
            .has_value())
@@ -602,7 +614,7 @@ static void test_preserve_no_priority_relative_order() {
   }
   uintptr_t head = 0;
   for (auto h : all)
-    if (pointed.find(h) == pointed.end()) {
+    if (!pointed.contains(h)) {
       head = h;
       break;
     }
@@ -629,6 +641,7 @@ static void test_preserve_no_priority_relative_order() {
   }
 }
 
+// Expected chain: prior -> s4 -> s3 -> s2 -> s1 -> fixup
 static void test_order_stability() {
   puts("Test: order stability for equal-priority hooks");
   uintptr_t s1 = 0xA1010001;
@@ -645,18 +658,30 @@ static void test_order_stability() {
   void* orig4 = nullptr;
   void* origPrior = nullptr;
 
-  HookNameMetadata m1; m1.name = "s1"; m1.namespaze = "stable";
-  HookNameMetadata m2; m2.name = "s2"; m2.namespaze = "stable";
-  HookNameMetadata m3; m3.name = "s3"; m3.namespaze = "stable";
-  HookNameMetadata m4; m4.name = "s4"; m4.namespaze = "stable";
+  HookNameMetadata m1;
+  m1.name = "s1";
+  m1.namespaze = "stable";
+  HookNameMetadata m2;
+  m2.name = "s2";
+  m2.namespaze = "stable";
+  HookNameMetadata m3;
+  m3.name = "s3";
+  m3.namespaze = "stable";
+  HookNameMetadata m4;
+  m4.name = "s4";
+  m4.namespaze = "stable";
 
-  if (!flamingo::Install(flamingo::HookInfo((void*)s1, hook_target.data(), &orig1, std::move(m1), HookPriority{})).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)s1, hook_target.data(), &orig1, std::move(m1), HookPriority{}))
+           .has_value())
     ERROR("Failed to install s1");
-  if (!flamingo::Install(flamingo::HookInfo((void*)s2, hook_target.data(), &orig2, std::move(m2), HookPriority{})).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)s2, hook_target.data(), &orig2, std::move(m2), HookPriority{}))
+           .has_value())
     ERROR("Failed to install s2");
-  if (!flamingo::Install(flamingo::HookInfo((void*)s3, hook_target.data(), &orig3, std::move(m3), HookPriority{})).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)s3, hook_target.data(), &orig3, std::move(m3), HookPriority{}))
+           .has_value())
     ERROR("Failed to install s3");
-  if (!flamingo::Install(flamingo::HookInfo((void*)s4, hook_target.data(), &orig4, std::move(m4), HookPriority{})).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)s4, hook_target.data(), &orig4, std::move(m4), HookPriority{}))
+           .has_value())
     ERROR("Failed to install s4");
 
   // Insert a hook that requests to be before the entire 'stable' namespace,
@@ -664,9 +689,10 @@ static void test_order_stability() {
   HookNameMetadata mp;
   mp.name = "prior";
   HookPriority pp;
-  HookNameFilter match_ns{"stable"};
+  HookNameFilter match_ns{ "stable" };
   pp.befores.push_back(match_ns);
-  if (!flamingo::Install(flamingo::HookInfo((void*)prior, hook_target.data(), &origPrior, std::move(mp), std::move(pp))).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)prior, hook_target.data(), &origPrior, std::move(mp), std::move(pp)))
+           .has_value())
     ERROR("Failed to install prior");
 
   auto fixup_res = flamingo::FixupPointerFor(flamingo::TargetDescriptor(hook_target.data()));
@@ -676,16 +702,14 @@ static void test_order_stability() {
   // Expect ordering: prior -> s4 -> s3 -> s2 -> s1 (newer installs at front, relative order preserved)
   if ((uintptr_t)origPrior != s4)
     ERROR("Stability: expected prior.orig == s4 (0x{:x}) got 0x{:x}", s4, (uintptr_t)origPrior);
-  if ((uintptr_t)orig4 != s3)
-    ERROR("Stability: expected s4.orig == s3 (0x{:x}) got 0x{:x}", s3, (uintptr_t)orig4);
-  if ((uintptr_t)orig3 != s2)
-    ERROR("Stability: expected s3.orig == s2 (0x{:x}) got 0x{:x}", s2, (uintptr_t)orig3);
-  if ((uintptr_t)orig2 != s1)
-    ERROR("Stability: expected s2.orig == s1 (0x{:x}) got 0x{:x}", s1, (uintptr_t)orig2);
+  if ((uintptr_t)orig4 != s3) ERROR("Stability: expected s4.orig == s3 (0x{:x}) got 0x{:x}", s3, (uintptr_t)orig4);
+  if ((uintptr_t)orig3 != s2) ERROR("Stability: expected s3.orig == s2 (0x{:x}) got 0x{:x}", s2, (uintptr_t)orig3);
+  if ((uintptr_t)orig2 != s1) ERROR("Stability: expected s2.orig == s1 (0x{:x}) got 0x{:x}", s1, (uintptr_t)orig2);
   if ((uintptr_t)orig1 != (uintptr_t)fixup_ptr)
     ERROR("Stability: expected s1.orig == fixup got 0x{:x}", (uintptr_t)orig1);
 }
 
+// Expected chain (observed): mid -> before -> e3 -> e2 -> e1 -> after -> fixup
 static void test_mixed_priority_stability() {
   puts("Test: mixed-priority stability (some prioritized, others stable)");
   uintptr_t m1 = 0xC1010001;
@@ -704,42 +728,57 @@ static void test_mixed_priority_stability() {
   void* origMid = nullptr;
   void* origAfter = nullptr;
 
-  HookNameMetadata mm1; mm1.name = "e1"; mm1.namespaze = "mix";
-  HookNameMetadata mm2; mm2.name = "e2"; mm2.namespaze = "mix";
-  HookNameMetadata mm3; mm3.name = "e3"; mm3.namespaze = "mix";
+  HookNameMetadata mm1;
+  mm1.name = "e1";
+  mm1.namespaze = "mix";
+  HookNameMetadata mm2;
+  mm2.name = "e2";
+  mm2.namespaze = "mix";
+  HookNameMetadata mm3;
+  mm3.name = "e3";
+  mm3.namespaze = "mix";
 
-  if (!flamingo::Install(flamingo::HookInfo((void*)m1, hook_target.data(), &orig1, std::move(mm1), HookPriority{})).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)m1, hook_target.data(), &orig1, std::move(mm1), HookPriority{}))
+           .has_value())
     ERROR("Failed to install m1");
-  if (!flamingo::Install(flamingo::HookInfo((void*)m2, hook_target.data(), &orig2, std::move(mm2), HookPriority{})).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)m2, hook_target.data(), &orig2, std::move(mm2), HookPriority{}))
+           .has_value())
     ERROR("Failed to install m2");
-  if (!flamingo::Install(flamingo::HookInfo((void*)m3, hook_target.data(), &orig3, std::move(mm3), HookPriority{})).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)m3, hook_target.data(), &orig3, std::move(mm3), HookPriority{}))
+           .has_value())
     ERROR("Failed to install m3");
 
   // Install a hook that should come before the whole 'mix' namespace
   HookNameMetadata mb;
   mb.name = "before";
   HookPriority pb;
-  HookNameFilter nm_ns{"mix"};
+  HookNameFilter nm_ns{ "mix" };
   pb.befores.push_back(nm_ns);
-  if (!flamingo::Install(flamingo::HookInfo((void*)before, hook_target.data(), &origBefore, std::move(mb), std::move(pb))).has_value())
+  if (!flamingo::Install(
+           flamingo::HookInfo((void*)before, hook_target.data(), &origBefore, std::move(mb), std::move(pb)))
+           .has_value())
     ERROR("Failed to install before hook");
 
   // Install a hook that requests to be after the specific hook 'e2'
   HookNameMetadata mmid;
   mmid.name = "mid";
   HookPriority pmid;
-  HookNameMetadata ref; ref.name = "e2";
+  HookNameMetadata ref;
+  ref.name = "e2";
   pmid.afters.emplace_back(ref);
-  if (!flamingo::Install(flamingo::HookInfo((void*)mid, hook_target.data(), &origMid, std::move(mmid), std::move(pmid))).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)mid, hook_target.data(), &origMid, std::move(mmid), std::move(pmid)))
+           .has_value())
     ERROR("Failed to install mid hook");
 
   // Install a hook that should come after the whole 'mix' namespace
   HookNameMetadata ma;
   ma.name = "after";
   HookPriority pa;
-  HookNameFilter nm_ns2; nm_ns2.namespaze = "mix";
+  HookNameFilter nm_ns2;
+  nm_ns2.namespaze = "mix";
   pa.afters.emplace_back(nm_ns2);
-  if (!flamingo::Install(flamingo::HookInfo((void*)after, hook_target.data(), &origAfter, std::move(ma), std::move(pa))).has_value())
+  if (!flamingo::Install(flamingo::HookInfo((void*)after, hook_target.data(), &origAfter, std::move(ma), std::move(pa)))
+           .has_value())
     ERROR("Failed to install after hook");
 
   auto fixup_res = flamingo::FixupPointerFor(flamingo::TargetDescriptor(hook_target.data()));
@@ -761,7 +800,7 @@ static void test_mixed_priority_stability() {
     ERROR("Mixed-stability: expected after.orig == fixup got 0x{:x}", (uintptr_t)origAfter);
 }
 
-
+// Expected chain for reinstall: reinst -> fixup
 static void test_reinstall() {
   puts("Test: reinstall");
   uintptr_t h = 0xA0001001;
@@ -786,6 +825,9 @@ static void test_reinstall() {
   if ((uintptr_t)orig != (uintptr_t)fixup_ptr) ERROR("Reinstall: expected orig == fixup after reinstall");
 }
 
+// Expected initial chain: u2 -> u1 -> fixup;
+// after removing u2: u1 -> fixup;
+// after removing u1: no fixup
 static void test_uninstall() {
   puts("Test: uninstall");
   uintptr_t h1 = 0xB0010001;
@@ -796,11 +838,13 @@ static void test_uninstall() {
   void* orig1 = nullptr;
   void* orig2 = nullptr;
 
-  auto r1 = flamingo::Install(flamingo::HookInfo((void*)h1, hook_target.data(), &orig1, HookNameMetadata{.name = "u1"}, HookPriority{}));
+  auto r1 = flamingo::Install(
+      flamingo::HookInfo((void*)h1, hook_target.data(), &orig1, HookNameMetadata{ .name = "u1" }, HookPriority{}));
   if (!r1.has_value()) ERROR("Failed to install u1: {}", r1.error());
   auto handle1 = r1.value().returned_handle;
 
-  auto r2 = flamingo::Install(flamingo::HookInfo((void*)h2, hook_target.data(), &orig2, HookNameMetadata{.name = "u2"}, HookPriority{}));
+  auto r2 = flamingo::Install(
+      flamingo::HookInfo((void*)h2, hook_target.data(), &orig2, HookNameMetadata{ .name = "u2" }, HookPriority{}));
   if (!r2.has_value()) ERROR("Failed to install u2: {}", r2.error());
   auto handle2 = r2.value().returned_handle;
 
@@ -822,7 +866,6 @@ static void test_uninstall() {
   auto fix_final = flamingo::FixupPointerFor(flamingo::TargetDescriptor(hook_target.data()));
   if (fix_final.has_value()) ERROR("Expected no fixup pointer after removing last hook");
 }
-
 
 int main() {
   test_name_matching();
