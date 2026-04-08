@@ -151,13 +151,10 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     zero_in_degree.pop();
 
     // find the iterator for this name
-    auto it = name_to_iterator.find(current_name);
-    if (it == name_to_iterator.end()) {
-      // should not happen
-      continue;
-    }
+    auto it = name_to_iterator[current_name];
+
     // move to sorted_hooks
-    sorted_hooks.splice(sorted_hooks.end(), hooks, it->second);
+    sorted_hooks.splice(sorted_hooks.end(), hooks, it);
 
     // decrease in_degree of afters
     auto const& befores = graph[current_name];
@@ -262,34 +259,8 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
   // if existing hooks have priority constraints that depend on us, we need to respect those
   // therefore topological
 
-  // If the incoming hook has any priority constraints, we may need a topological pass.
-  bool requires_sort =
-      !hook_to_install.metadata.priority.afters.empty() || !hook_to_install.metadata.priority.befores.empty();
-
-  // If any existing hook has constraints that reference the incoming hook, we must sort.
-  for (auto const& existing_hook : hooks) {
-    for (auto const& after_filter : existing_hook.metadata.priority.afters) {
-      if (after_filter.matches(hook_to_install.metadata.name_info)) {
-        requires_sort = true;
-        break;
-      }
-    }
-    // if existing_hook requests to be before us, we cannot install before it
-    for (auto const& before_filter : existing_hook.metadata.priority.befores) {
-      if (before_filter.matches(hook_to_install.metadata.name_info)) {
-        requires_sort = true;
-        break;
-      }
-    }
-    if (requires_sort) {
-      break;
-    }
-  }
-
-  // if we require a sort, do it then recompile
-  if (requires_sort) {
     // copy hooks
-    auto old_hooks = hooks;
+  auto old_hooks = std::list<HookInfo>(hooks);
 
     TargetDescriptor target{ hook_to_install.target };
     auto metadata = hook_to_install.metadata;
@@ -314,8 +285,8 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
       hooks.swap(old_hooks);
 
       return ResultT::Err(installation::TargetBadPriorities{
-        metadata, fmt::format("Cannot install hook due to cycles in priorities involving hook name: {}",
-                              fmt::join(cycle_strings, ",")) });
+      metadata, fmt::format("Cannot install hook due to cycles in priorities involving hook name:\n\t{}",
+                            fmt::join(cycles, "\n\t")) });
     }
 
     // now recompile all hooks to ensure orig pointers are correct
