@@ -151,10 +151,13 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
     zero_in_degree.pop();
 
     // find the iterator for this name
-    auto it = name_to_iterator[current_name];
-
+    auto it = name_to_iterator.find(current_name);
+    if (it == name_to_iterator.end()) {
+      // should not happen
+      continue;
+    }
     // move to sorted_hooks
-    sorted_hooks.splice(sorted_hooks.end(), hooks, it);
+    sorted_hooks.splice(sorted_hooks.end(), hooks, it->second);
 
     // decrease in_degree of afters
     auto const& befores = graph[current_name];
@@ -259,8 +262,34 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
   // if existing hooks have priority constraints that depend on us, we need to respect those
   // therefore topological
 
+  // If the incoming hook has any priority constraints, we may need a topological pass.
+  bool requires_sort =
+      !hook_to_install.metadata.priority.afters.empty() || !hook_to_install.metadata.priority.befores.empty();
+
+  // If any existing hook has constraints that reference the incoming hook, we must sort.
+  for (auto const& existing_hook : hooks) {
+    for (auto const& after_filter : existing_hook.metadata.priority.afters) {
+      if (after_filter.matches(hook_to_install.metadata.name_info)) {
+        requires_sort = true;
+        break;
+      }
+    }
+    // if existing_hook requests to be before us, we cannot install before it
+    for (auto const& before_filter : existing_hook.metadata.priority.befores) {
+      if (before_filter.matches(hook_to_install.metadata.name_info)) {
+        requires_sort = true;
+        break;
+      }
+    }
+    if (requires_sort) {
+      break;
+    }
+  }
+
+  // if we require a sort, do it then recompile
+  if (requires_sort) {
     // copy hooks
-  auto old_hooks = std::list<HookInfo>(hooks);
+    auto old_hooks = hooks;
 
     TargetDescriptor target{ hook_to_install.target };
     auto metadata = hook_to_install.metadata;
@@ -275,18 +304,12 @@ Result<std::list<HookInfo>::iterator, installation::TargetBadPriorities> find_su
 
     if (!cycles.empty()) {
       // We have cycles involving our new hook
-      // Remove our new hook
-      std::vector<std::string> cycle_strings;
-      for (auto const& hook : cycles) {
-        cycle_strings.push_back(hook.metadata.name_info.name);
-      }
-
       // revert hooks (we need to keep original order)
       hooks.swap(old_hooks);
 
       return ResultT::Err(installation::TargetBadPriorities{
-      metadata, fmt::format("Cannot install hook due to cycles in priorities involving hook name:\n\t{}",
-                            fmt::join(cycles, "\n\t")) });
+        metadata, fmt::format("Cannot install hook due to cycles in priorities involving hook name:\n\t{}",
+                              fmt::join(cycles, "\n\t")) });
     }
 
     // now recompile all hooks to ensure orig pointers are correct
@@ -360,8 +383,8 @@ Result<std::monostate, installation::TargetBadPriorities> validate_priority_cons
   using ResultT = Result<std::monostate, installation::TargetBadPriorities>;
   // Validate that the new hook's priorities do not conflict with existing hooks
   // For each existing hook, we need to ensure that if the new hook wants to be before it, it is actually before it, and
-  // if it wants to be after it, it is actually after it. We also need to ensure that if the new hook has a final priority,
-  // it is the last hook.
+  // if it wants to be after it, it is actually after it. We also need to ensure that if the new hook has a final
+  // priority, it is the last hook.
 
   // Check final priority constraints first
   if (incoming.priority.is_final) {
@@ -394,9 +417,8 @@ Result<std::monostate, installation::TargetBadPriorities> validate_priority_cons
   }
 
   return ResultT::Ok();
-
+}
 }  // namespace
-
 namespace flamingo {
 std::optional<TargetData const> TargetDataFor(TargetDescriptor target) {
   auto it = targets.find(target);
