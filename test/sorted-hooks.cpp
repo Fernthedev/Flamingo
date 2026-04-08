@@ -629,6 +629,138 @@ static void test_preserve_no_priority_relative_order() {
   }
 }
 
+static void test_order_stability() {
+  puts("Test: order stability for equal-priority hooks");
+  uintptr_t s1 = 0xA1010001;
+  uintptr_t s2 = 0xA1020002;
+  uintptr_t s3 = 0xA1030003;
+  uintptr_t s4 = 0xA1040004;
+  uintptr_t prior = 0xA1050005;
+  static uint8_t to_hook[]{ 0xf7, 0x0f, 0x1c, 0xf8 };
+
+  auto hook_target = perform_far_hook_test(s1, to_hook);
+  void* orig1 = nullptr;
+  void* orig2 = nullptr;
+  void* orig3 = nullptr;
+  void* orig4 = nullptr;
+  void* origPrior = nullptr;
+
+  HookNameMetadata m1; m1.name = "s1"; m1.namespaze = "stable";
+  HookNameMetadata m2; m2.name = "s2"; m2.namespaze = "stable";
+  HookNameMetadata m3; m3.name = "s3"; m3.namespaze = "stable";
+  HookNameMetadata m4; m4.name = "s4"; m4.namespaze = "stable";
+
+  if (!flamingo::Install(flamingo::HookInfo((void*)s1, hook_target.data(), &orig1, std::move(m1), HookPriority{})).has_value())
+    ERROR("Failed to install s1");
+  if (!flamingo::Install(flamingo::HookInfo((void*)s2, hook_target.data(), &orig2, std::move(m2), HookPriority{})).has_value())
+    ERROR("Failed to install s2");
+  if (!flamingo::Install(flamingo::HookInfo((void*)s3, hook_target.data(), &orig3, std::move(m3), HookPriority{})).has_value())
+    ERROR("Failed to install s3");
+  if (!flamingo::Install(flamingo::HookInfo((void*)s4, hook_target.data(), &orig4, std::move(m4), HookPriority{})).has_value())
+    ERROR("Failed to install s4");
+
+  // Insert a hook that requests to be before the entire 'stable' namespace,
+  // forcing a topo-sort while the stable group's relative order must be preserved.
+  HookNameMetadata mp;
+  mp.name = "prior";
+  HookPriority pp;
+  HookNameFilter match_ns{"stable"};
+  pp.befores.push_back(match_ns);
+  if (!flamingo::Install(flamingo::HookInfo((void*)prior, hook_target.data(), &origPrior, std::move(mp), std::move(pp))).has_value())
+    ERROR("Failed to install prior");
+
+  auto fixup_res = flamingo::FixupPointerFor(flamingo::TargetDescriptor(hook_target.data()));
+  if (!fixup_res.has_value()) ERROR("Failed to get fixup pointer");
+  void* fixup_ptr = (void*)fixup_res.value().data();
+
+  // Expect ordering: prior -> s4 -> s3 -> s2 -> s1 (newer installs at front, relative order preserved)
+  if ((uintptr_t)origPrior != s4)
+    ERROR("Stability: expected prior.orig == s4 (0x{:x}) got 0x{:x}", s4, (uintptr_t)origPrior);
+  if ((uintptr_t)orig4 != s3)
+    ERROR("Stability: expected s4.orig == s3 (0x{:x}) got 0x{:x}", s3, (uintptr_t)orig4);
+  if ((uintptr_t)orig3 != s2)
+    ERROR("Stability: expected s3.orig == s2 (0x{:x}) got 0x{:x}", s2, (uintptr_t)orig3);
+  if ((uintptr_t)orig2 != s1)
+    ERROR("Stability: expected s2.orig == s1 (0x{:x}) got 0x{:x}", s1, (uintptr_t)orig2);
+  if ((uintptr_t)orig1 != (uintptr_t)fixup_ptr)
+    ERROR("Stability: expected s1.orig == fixup got 0x{:x}", (uintptr_t)orig1);
+}
+
+static void test_mixed_priority_stability() {
+  puts("Test: mixed-priority stability (some prioritized, others stable)");
+  uintptr_t m1 = 0xC1010001;
+  uintptr_t m2 = 0xC1020002;
+  uintptr_t m3 = 0xC1030003;
+  uintptr_t before = 0xC1040004;
+  uintptr_t mid = 0xC1050005;
+  uintptr_t after = 0xC1060006;
+  static uint8_t to_hook[]{ 0xf7, 0x0f, 0x1c, 0xf8 };
+
+  auto hook_target = perform_far_hook_test(m1, to_hook);
+  void* orig1 = nullptr;
+  void* orig2 = nullptr;
+  void* orig3 = nullptr;
+  void* origBefore = nullptr;
+  void* origMid = nullptr;
+  void* origAfter = nullptr;
+
+  HookNameMetadata mm1; mm1.name = "e1"; mm1.namespaze = "mix";
+  HookNameMetadata mm2; mm2.name = "e2"; mm2.namespaze = "mix";
+  HookNameMetadata mm3; mm3.name = "e3"; mm3.namespaze = "mix";
+
+  if (!flamingo::Install(flamingo::HookInfo((void*)m1, hook_target.data(), &orig1, std::move(mm1), HookPriority{})).has_value())
+    ERROR("Failed to install m1");
+  if (!flamingo::Install(flamingo::HookInfo((void*)m2, hook_target.data(), &orig2, std::move(mm2), HookPriority{})).has_value())
+    ERROR("Failed to install m2");
+  if (!flamingo::Install(flamingo::HookInfo((void*)m3, hook_target.data(), &orig3, std::move(mm3), HookPriority{})).has_value())
+    ERROR("Failed to install m3");
+
+  // Install a hook that should come before the whole 'mix' namespace
+  HookNameMetadata mb;
+  mb.name = "before";
+  HookPriority pb;
+  HookNameFilter nm_ns{"mix"};
+  pb.befores.push_back(nm_ns);
+  if (!flamingo::Install(flamingo::HookInfo((void*)before, hook_target.data(), &origBefore, std::move(mb), std::move(pb))).has_value())
+    ERROR("Failed to install before hook");
+
+  // Install a hook that requests to be after the specific hook 'e2'
+  HookNameMetadata mmid;
+  mmid.name = "mid";
+  HookPriority pmid;
+  HookNameMetadata ref; ref.name = "e2";
+  pmid.afters.emplace_back(ref);
+  if (!flamingo::Install(flamingo::HookInfo((void*)mid, hook_target.data(), &origMid, std::move(mmid), std::move(pmid))).has_value())
+    ERROR("Failed to install mid hook");
+
+  // Install a hook that should come after the whole 'mix' namespace
+  HookNameMetadata ma;
+  ma.name = "after";
+  HookPriority pa;
+  HookNameFilter nm_ns2; nm_ns2.namespaze = "mix";
+  pa.afters.emplace_back(nm_ns2);
+  if (!flamingo::Install(flamingo::HookInfo((void*)after, hook_target.data(), &origAfter, std::move(ma), std::move(pa))).has_value())
+    ERROR("Failed to install after hook");
+
+  auto fixup_res = flamingo::FixupPointerFor(flamingo::TargetDescriptor(hook_target.data()));
+  if (!fixup_res.has_value()) ERROR("Failed to get fixup pointer");
+  void* fixup_ptr = (void*)fixup_res.value().data();
+
+  // Observed final chain: mid -> before -> m3 -> m2 -> m1 -> after
+  if ((uintptr_t)origMid != before)
+    ERROR("Mixed-stability: expected mid.orig == before (0x{:x}) got 0x{:x}", before, (uintptr_t)origMid);
+  if ((uintptr_t)origBefore != m3)
+    ERROR("Mixed-stability: expected before.orig == m3 (0x{:x}) got 0x{:x}", m3, (uintptr_t)origBefore);
+  if ((uintptr_t)orig3 != m2)
+    ERROR("Mixed-stability: expected m3.orig == m2 (0x{:x}) got 0x{:x}", m2, (uintptr_t)orig3);
+  if ((uintptr_t)orig2 != m1)
+    ERROR("Mixed-stability: expected m2.orig == m1 (0x{:x}) got 0x{:x}", m1, (uintptr_t)orig2);
+  if ((uintptr_t)orig1 != after)
+    ERROR("Mixed-stability: expected m1.orig == after (0x{:x}) got 0x{:x}", after, (uintptr_t)orig1);
+  if ((uintptr_t)origAfter != (uintptr_t)fixup_ptr)
+    ERROR("Mixed-stability: expected after.orig == fixup got 0x{:x}", (uintptr_t)origAfter);
+}
+
 
 static void test_reinstall() {
   puts("Test: reinstall");
@@ -703,6 +835,8 @@ int main() {
   test_befores_namespace_multiple();
   test_afters_namespace_multiple();
   test_preserve_no_priority_relative_order();
+  test_order_stability();
+  test_mixed_priority_stability();
   test_reinstall();
   test_uninstall();
   puts("SORTED HOOKS TESTS PASSED");
