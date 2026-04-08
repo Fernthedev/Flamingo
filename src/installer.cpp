@@ -396,23 +396,19 @@ Result<std::monostate, installation::TargetBadPriorities> validate_priority_cons
     }
   }
 
-  // Now check before/after constraints
-  for (auto const& existing : existing_hooks) {
-    for (auto const& afterFilter : incoming.priority.afters) {
-      if (afterFilter.matches(existing.metadata.name_info)) {
-        return ResultT::Err(installation::TargetBadPriorities{
-          incoming, fmt::format("Cannot install hook because it requests to be after hook with name: {} but that "
-                                "hook is already installed before it.",
-                                existing.metadata.name_info) });
-      }
+  // Prevent a hook from declaring priorities that reference itself (self-priority).
+  for (auto const& afterFilter : incoming.priority.afters) {
+    if (afterFilter.matches(incoming.name_info)) {
+      return ResultT::Err(installation::TargetBadPriorities{
+        incoming,
+        fmt::format("Cannot install hook because it requests to be after itself: {}", incoming.name_info)});
     }
-    for (auto const& beforeFilter : incoming.priority.befores) {
-      if (beforeFilter.matches(existing.metadata.name_info)) {
-        return ResultT::Err(installation::TargetBadPriorities{
-          incoming, fmt::format("Cannot install hook because it requests to be before hook with name: {} but that "
-                                "hook is already installed after it.",
-                                existing.metadata.name_info) });
-      }
+  }
+  for (auto const& beforeFilter : incoming.priority.befores) {
+    if (beforeFilter.matches(incoming.name_info)) {
+      return ResultT::Err(installation::TargetBadPriorities{
+        incoming,
+        fmt::format("Cannot install hook because it requests to be before itself: {}", incoming.name_info)});
     }
   }
 
