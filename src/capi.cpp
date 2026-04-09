@@ -307,7 +307,7 @@ FLAMINGO_C_EXPORT size_t flamingo_get_hooks(uint32_t* target, FlamingoHookInfo* 
 
 // Provide a single allocation-style filtered query and a matching free function below.
 
-FLAMINGO_C_EXPORT FlamingoHookInfo* flamingo_get_hooks_filtered(FlamingoHookFilter* filter, uint32_t* target,
+FLAMINGO_C_EXPORT FlamingoHookInfo* flamingo_get_hooks_filtered(FlamingoHookFilter* filter, void* target,
                                                                 size_t* out_count) {
   std::optional<flamingo::HookNameFilter> opt_filter = std::nullopt;
   if (filter != nullptr) {
