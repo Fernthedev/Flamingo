@@ -608,4 +608,25 @@ Result<std::span<uint32_t const>, std::monostate> FixupPointerFor(TargetDescript
   return Result<std::span<uint32_t const>, std::monostate>::Err();
 }
 
+std::vector<HookInfo> Hooks(std::optional<HookNameFilter> const& filter,
+                            std::optional<TargetDescriptor> const& targetFilter) {
+  std::vector<HookInfo> out;
+  out.reserve(16);
+  for (auto const& target_pair : targets) {
+    // If a target filter is provided, skip other targets
+    if (targetFilter.has_value()) {
+      if (target_pair.first.target != targetFilter->target) {
+        continue;
+      }
+    }
+    for (auto const& hook : target_pair.second.hooks) {
+      if (filter.has_value()) {
+        if (!filter->matches(hook.metadata.name_info)) continue;
+      }
+      out.push_back(hook);
+    }
+  }
+  return out;
+}
+
 }  // namespace flamingo

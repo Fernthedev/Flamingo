@@ -297,6 +297,17 @@ FLAMINGO_C_EXPORT size_t flamingo_get_hooks(uint32_t* target, FlamingoHookInfo* 
 /// by `flamingo_get_hooks`. Does NOT free the `hooks` array itself; the caller is responsible for that.
 FLAMINGO_C_EXPORT_VOID void flamingo_free_hooks_array(FlamingoHookInfo* hooks, size_t length);
 
+/// @brief Allocates and returns an array of `FlamingoHookInfo` matching `filter` and `target`.
+/// If `filter` is NULL, no name/namespace filtering is applied. If `target` is NULL, hooks across all targets
+/// are considered.
+/// The returned pointer is malloc'd and must be freed with `flamingo_free_hooks_info_array`.
+/// The actual number of entries is written to `out_count` (may be NULL if caller doesn't need it).
+FLAMINGO_C_EXPORT FlamingoHookInfo* flamingo_get_hooks_filtered(FlamingoHookFilter* filter,
+                                                               uint32_t* target, size_t* out_count);
+
+/// @brief Frees an array returned by `flamingo_get_hooks_filtered`, including per-entry strings.
+FLAMINGO_C_EXPORT_VOID void flamingo_free_hooks_info_array(FlamingoHookInfo* hooks, size_t length);
+
 #ifdef __cplusplus
 }
 #endif

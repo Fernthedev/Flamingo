@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include "calling-convention.hpp"
@@ -301,6 +303,61 @@ FLAMINGO_C_EXPORT size_t flamingo_get_hooks(uint32_t* target, FlamingoHookInfo* 
   }
 
   return to_copy;
+}
+
+// Provide a single allocation-style filtered query and a matching free function below.
+
+FLAMINGO_C_EXPORT FlamingoHookInfo* flamingo_get_hooks_filtered(FlamingoHookFilter* filter, uint32_t* target,
+                                                                size_t* out_count) {
+  std::optional<flamingo::HookNameFilter> opt_filter = std::nullopt;
+  if (filter != nullptr) {
+    auto const& f = *reinterpret_cast<flamingo::HookNameFilter*>(filter);
+    opt_filter = flamingo::HookNameFilter{ f };
+  }
+  std::optional<flamingo::TargetDescriptor> td = std::nullopt;
+  if (target != nullptr) {
+    td = flamingo::TargetDescriptor{ .target = target };
+  }
+
+  auto v = flamingo::Hooks(opt_filter, td);
+  size_t count = v.size();
+  if (out_count != nullptr) *out_count = count;
+  if (count == 0) {
+    return nullptr;
+  }
+
+  auto* arr = static_cast<FlamingoHookInfo*>(std::malloc(sizeof(FlamingoHookInfo) * count));
+
+  // populate
+  for (size_t i = 0; i < count; ++i) {
+    auto const& orig = v[i];
+    auto& c = arr[i];
+
+    c.hook_ptr = orig.hook_ptr;
+    c.orig_ptr = orig.orig_ptr;
+    if (orig.metadata.name_info.name.empty()) {
+      c.name = nullptr;
+    } else {
+      c.name = static_cast<char*>(std::malloc(orig.metadata.name_info.name.size() + 1));
+      std::strcpy(c.name, orig.metadata.name_info.name.c_str());
+    }
+    if (orig.metadata.name_info.namespaze.empty()) {
+      c.namespaze = nullptr;
+    } else {
+      c.namespaze = static_cast<char*>(std::malloc(orig.metadata.name_info.namespaze.size() + 1));
+      std::strcpy(c.namespaze, orig.metadata.name_info.namespaze.c_str());
+    }
+  }
+  return arr;
+}
+
+FLAMINGO_C_EXPORT_VOID void flamingo_free_hooks_info_array(FlamingoHookInfo* hooks, size_t length) {
+  if (hooks == nullptr) return;
+  for (size_t i = 0; i < length; ++i) {
+    if (hooks[i].name != nullptr) std::free(hooks[i].name);
+    if (hooks[i].namespaze != nullptr) std::free(hooks[i].namespaze);
+  }
+  std::free(hooks);
 }
 
 FLAMINGO_C_EXPORT_VOID void flamingo_free_hooks_array(FlamingoHookInfo* hooks, size_t length) {

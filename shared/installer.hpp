@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <span>
 #include <variant>
+#include <vector>
+#include <optional>
+#include <string>
 #include "hook-data.hpp"
 #include "hook-installation-result.hpp"
 #include "target-data.hpp"
@@ -62,5 +65,12 @@ std::span<uint32_t> FLAMINGO_EXPORT OriginalInstsFor(TargetDescriptor target);
 /// If the target is not hooked, returns an error Result.
 [[nodiscard]] FLAMINGO_EXPORT Result<std::span<uint32_t const>, std::monostate> FixupPointerFor(
     TargetDescriptor target);
+
+/// @brief Returns a list of installed hooks.
+/// @param filter Optional name filter; if provided only hooks matching the filter are returned.
+/// @param target Optional target filter; if provided only hooks installed on that target are returned.
+[[nodiscard]] FLAMINGO_EXPORT std::vector<HookInfo> Hooks(
+    std::optional<HookNameFilter> const& filter = std::nullopt,
+    std::optional<TargetDescriptor> const& target = std::nullopt);
 
 }  // namespace flamingo
