@@ -177,12 +177,12 @@ Result<std::list<HookInfo>, installation::TargetBadPriorities> topological_sort_
 
   if (!hooks.empty()) {
     for (auto const& hook : hooks) {
-      FLAMINGO_CRITICAL(
+      FLAMINGO_DEBUG(
           "Detected cycle in hook priorities involving hook name: {}. Hooks involved in the cycle will remain in their "
           "original order.",
           hook.metadata.name_info);
-      FLAMINGO_CRITICAL("After priorities for this hook were: {}", fmt::join(hook.metadata.priority.afters, ", "));
-      FLAMINGO_CRITICAL("Before priorities for this hook were: {}", fmt::join(hook.metadata.priority.befores, ", "));
+      FLAMINGO_DEBUG("After priorities for this hook were: {}", fmt::join(hook.metadata.priority.afters, ", "));
+      FLAMINGO_DEBUG("Before priorities for this hook were: {}", fmt::join(hook.metadata.priority.befores, ", "));
     }
 
     // TODO: Restore hooks list to original state?
