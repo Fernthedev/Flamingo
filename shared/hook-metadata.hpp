@@ -103,6 +103,18 @@ class fmt::formatter<flamingo::HookNameFilter> {
   }
   template <typename Context>
   constexpr auto format(flamingo::HookNameFilter const& filter, Context& ctx) const {
-    return fmt::format_to(ctx.out(), "name: {} namespace {}", filter.name.value_or("*"), filter.namespaze.value_or("*"));
+    return fmt::format_to(ctx.out(), "name: {} namespace {}", filter.name.value_or("*"),
+                          filter.namespaze.value_or("*"));
   }
 };
+
+// HookNameMetadata hash
+namespace std {
+template <>
+struct hash<flamingo::HookNameMetadata> {
+  std::size_t operator()(flamingo::HookNameMetadata const& k) const {
+    return std::hash<std::string>()(k.name) ^ (std::hash<std::string>()(k.namespaze) << 1);
+  }
+};
+
+}  // namespace std
